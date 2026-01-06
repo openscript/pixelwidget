@@ -78,18 +78,3 @@ mqtt:
   will_message:
     topic: ${name}/status
     payload: offline
-
-# MQTT text sensor to receive pixel commands
-text_sensor:
-  - platform: mqtt_subscribe
-    name: "Pixel Command"
-    id: pixel_command
-    topic: ${name}/command
-    on_value:
-      then:
-        - lambda: |-
-            ESP_LOGI("mqtt", "Received pixel command: %s", x.c_str());
-            // Parse command format: "x,y,r,g,b" or "clear" or "fill,r,g,b"
-            std::string cmd = x;
-            // You can add custom pixel control logic here
-
