@@ -31,6 +31,10 @@ globals:
     type: int
     restore_value: no
     initial_value: '15'
+  - id: display_brightness
+    type: float
+    restore_value: yes
+    initial_value: '0.33'
 
 # Scripts for display management
 script:
@@ -41,14 +45,17 @@ script:
     then:
       - lambda: |-
           id(display_timeout_minutes) = timeout_minutes;
-          ESP_LOGI("display", "Display wake, timeout in %d minutes", timeout_minutes);
-      - light.turn_on:
-          id: matrix_light
-          brightness: 33%
+          ESP_LOGI("display", "Display wake, timeout in %d minutes, brightness %.0f%%", timeout_minutes, id(display_brightness) * 100);
+      - lambda: |-
+          auto call = id(matrix_light).turn_on();
+          call.set_brightness(id(display_brightness));
+          call.perform();
       - delay: !lambda 'return id(display_timeout_minutes) * 60 * 1000;'
-      - light.turn_off:
-          id: matrix_light
-      - lambda: ESP_LOGI("display", "Display sleep after timeout");
+      - lambda: |-
+          auto call = id(matrix_light).turn_on();
+          call.set_brightness(0.0f);
+          call.perform();
+          ESP_LOGI("display", "Display sleep after timeout");
 
 esp32:
   board: esp32dev
@@ -136,11 +143,6 @@ light:
     name: "Matrix Light"
     restore_mode: ALWAYS_OFF
     default_transition_length: 0s
-    on_turn_on:
-      - lambda: |-
-          auto call = id(matrix_light).turn_on();
-          call.set_brightness(128 / 255.0f);
-          call.perform();
 
 # Addressable light display for 2D pixel control
 display:
@@ -275,10 +277,11 @@ text_sensor:
             int brightness;
             if (sscanf(x.c_str(), "%d", &brightness) == 1) {
               float b = brightness / 255.0f;
+              id(display_brightness) = b;
               auto call = id(matrix_light).turn_on();
               call.set_brightness(b);
               call.perform();
-              ESP_LOGI("pixel", "Brightness %d (%.2f)", brightness, b);
+              ESP_LOGI("pixel", "Brightness %d (%.2f) - saved", brightness, b);
             }
 
   # Set entire display image: base64 encoded RGB data (256 pixels * 3 bytes = 768 bytes)
