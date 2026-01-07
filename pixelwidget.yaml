@@ -21,9 +21,34 @@ esphome:
     priority: -100
     then:
       - lambda: id(buzzer_out).turn_off();
+      - script.execute:
+          id: wake_display
+          timeout_minutes: 15
+
+# Global variables for display sleep/wake
+globals:
+  - id: display_timeout_minutes
+    type: int
+    restore_value: no
+    initial_value: '15'
+
+# Scripts for display management
+script:
+  - id: wake_display
+    mode: restart
+    parameters:
+      timeout_minutes: int
+    then:
+      - lambda: |-
+          id(display_timeout_minutes) = timeout_minutes;
+          ESP_LOGI("display", "Display wake, timeout in %d minutes", timeout_minutes);
       - light.turn_on:
           id: matrix_light
-          brightness: 50%
+          brightness: 33%
+      - delay: !lambda 'return id(display_timeout_minutes) * 60 * 1000;'
+      - light.turn_off:
+          id: matrix_light
+      - lambda: ESP_LOGI("display", "Display sleep after timeout");
 
 esp32:
   board: esp32dev
@@ -145,6 +170,9 @@ text_sensor:
     topic: ${name}/pixel/set
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             int px, py, r, g, b;
             if (sscanf(x.c_str(), "%d,%d,%d,%d,%d", &px, &py, &r, &g, &b) == 5) {
@@ -161,6 +189,9 @@ text_sensor:
     topic: ${name}/pixel/fill
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             int r, g, b;
             if (sscanf(x.c_str(), "%d,%d,%d", &r, &g, &b) == 3) {
@@ -175,6 +206,9 @@ text_sensor:
     topic: ${name}/pixel/clear
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             id(matrix_display).fill(Color(0, 0, 0));
             ESP_LOGI("pixel", "Clear display");
@@ -186,6 +220,9 @@ text_sensor:
     topic: ${name}/pixel/line
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             int x1, y1, x2, y2, r, g, b;
             if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &x1, &y1, &x2, &y2, &r, &g, &b) == 7) {
@@ -200,6 +237,9 @@ text_sensor:
     topic: ${name}/pixel/rect
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             int px, py, w, h, r, g, b;
             if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &px, &py, &w, &h, &r, &g, &b) == 7) {
@@ -214,6 +254,9 @@ text_sensor:
     topic: ${name}/pixel/fillrect
     on_value:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
         - lambda: |-
             int px, py, w, h, r, g, b;
             if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &px, &py, &w, &h, &r, &g, &b) == 7) {
@@ -267,6 +310,9 @@ binary_sensor:
     name: "Middle Button"
     on_press:
       then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 5
         - mqtt.publish:
             topic: ${name}/button
             payload: "middle"
