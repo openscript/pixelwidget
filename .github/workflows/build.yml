@@ -28,6 +28,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache .esphome directory
+        uses: actions/cache@v4
+        with:
+          path: .esphome
+          key: ${{ runner.os }}-esphome-${{ hashFiles('pixelwidget.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-esphome-
+
       - name: Install ESPHome
         run: pip install esphome
 
