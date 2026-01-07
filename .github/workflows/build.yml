@@ -1,0 +1,80 @@
+name: Build & Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pixelwidget.yaml'
+      - 'secrets.yaml.template'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'pixelwidget.yaml'
+      - 'secrets.yaml.template'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    name: Build ESPHome Config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install ESPHome
+        run: pip install esphome
+
+      - name: Validate pixelwidget.yaml
+        run: esphome config pixelwidget.yaml
+
+      - name: Compile pixelwidget.yaml
+        run: esphome compile pixelwidget.yaml
+        env:
+          ESPHOME_BUILD_PATH: ./build
+
+  lint:
+    name: Lint YAML
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint pixelwidget.yaml
+        run: yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' pixelwidget.yaml
+
+      - name: Lint secrets.yaml.template
+        run: yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' secrets.yaml.template
+
+  security:
+    name: Security Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug
+        continue-on-error: true
