@@ -281,6 +281,72 @@ text_sensor:
               ESP_LOGI("pixel", "Brightness %d (%.2f)", brightness, b);
             }
 
+  # Set entire display image: base64 encoded RGB data (256 pixels * 3 bytes = 768 bytes)
+  - platform: mqtt_subscribe
+    name: "Pixel Image"
+    id: pixel_image_cmd
+    topic: ${name}/pixel/image
+    on_value:
+      then:
+        - script.execute:
+            id: wake_display
+            timeout_minutes: 15
+        - lambda: |-
+            // Decode base64 RGB image data (32x8 = 256 pixels, 3 bytes each = 768 bytes)
+            const char* b64 = x.c_str();
+            size_t b64_len = x.length();
+
+            // Base64 decode lookup table
+            static const uint8_t b64_table[256] = {
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,62,64,64,64,63,
+              52,53,54,55,56,57,58,59,60,61,64,64,64,0,64,64,
+              64,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,
+              15,16,17,18,19,20,21,22,23,24,25,64,64,64,64,64,
+              64,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+              41,42,43,44,45,46,47,48,49,50,51,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
+              64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64
+            };
+
+            // Decode base64 to RGB buffer
+            uint8_t rgb[768];
+            size_t rgb_idx = 0;
+            uint32_t accum = 0;
+            int bits = 0;
+
+            for (size_t i = 0; i < b64_len && rgb_idx < 768; i++) {
+              uint8_t val = b64_table[(uint8_t)b64[i]];
+              if (val < 64) {
+                accum = (accum << 6) | val;
+                bits += 6;
+                while (bits >= 8 && rgb_idx < 768) {
+                  bits -= 8;
+                  rgb[rgb_idx++] = (accum >> bits) & 0xFF;
+                }
+              }
+            }
+
+            if (rgb_idx >= 768) {
+              // Draw all 256 pixels (32x8)
+              for (int py = 0; py < 8; py++) {
+                for (int px = 0; px < 32; px++) {
+                  int idx = (py * 32 + px) * 3;
+                  id(matrix_display).draw_pixel_at(px, py, Color(rgb[idx], rgb[idx+1], rgb[idx+2]));
+                }
+              }
+              ESP_LOGI("pixel", "Image received (%d bytes decoded)", rgb_idx);
+            } else {
+              ESP_LOGW("pixel", "Image incomplete: expected 768 bytes, got %d", rgb_idx);
+            }
+
 # Buzzer output (active low, must be turned off on boot)
 output:
   - platform: ledc

@@ -25,6 +25,7 @@ Control individual pixels on a Ulanzi TC001 (32x8 LED matrix) via MQTT (with TLS
 | `pixelwidget/pixel/line` | `x1,y1,x2,y2,r,g,b` | Draw a line |
 | `pixelwidget/pixel/rect` | `x,y,w,h,r,g,b` | Draw rectangle outline |
 | `pixelwidget/pixel/fillrect` | `x,y,w,h,r,g,b` | Draw filled rectangle |
+| `pixelwidget/pixel/image` | Base64 RGB data | Set entire display (see below) |
 | `pixelwidget/brightness` | `0-255` | Set display brightness |
 
 ### Status Topics
@@ -62,6 +63,67 @@ mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
 # Set brightness to 50%
 mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
   -t "pixelwidget/brightness" -m "128"
+```
+
+### Sending a Full Image
+
+The `pixelwidget/pixel/image` topic accepts a base64-encoded RGB image. The image must be exactly 32x8 pixels (256 pixels × 3 bytes = 768 bytes of RGB data).
+
+**Image format:**
+- Raw RGB bytes, row by row (top to bottom, left to right)
+- Each pixel is 3 bytes: R, G, B (0-255 each)
+- Total: 768 bytes → Base64 encoded = 1024 characters
+
+**Python example:**
+
+```python
+import base64
+import ssl
+import paho.mqtt.client as mqtt
+
+# Create a 32x8 RGB image (red gradient)
+rgb_data = bytearray()
+for y in range(8):
+    for x in range(32):
+        rgb_data.extend([x * 8, 0, 0])  # Red gradient
+
+# Encode to base64
+image_b64 = base64.b64encode(rgb_data).decode('ascii')
+
+# Send via MQTT
+client = mqtt.Client()
+client.username_pw_set("display", "your_password")
+client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+client.connect("your-cluster.s1.eu.hivemq.cloud", 8883, 60)
+client.publish("pixelwidget/pixel/image", image_b64)
+client.disconnect()
+```
+
+**Node.js example:**
+
+```javascript
+const mqtt = require('mqtt');
+
+// Create a 32x8 RGB image (blue gradient)
+const rgbData = Buffer.alloc(768);
+for (let y = 0; y < 8; y++) {
+  for (let x = 0; x < 32; x++) {
+    const idx = (y * 32 + x) * 3;
+    rgbData[idx] = 0;           // R
+    rgbData[idx + 1] = 0;       // G
+    rgbData[idx + 2] = x * 8;   // B gradient
+  }
+}
+
+const client = mqtt.connect('mqtts://your-cluster.s1.eu.hivemq.cloud:8883', {
+  username: 'display',
+  password: 'your_password'
+});
+
+client.on('connect', () => {
+  client.publish('pixelwidget/pixel/image', rgbData.toString('base64'));
+  client.end();
+});
 ```
 
 ### Using Python (paho-mqtt)
