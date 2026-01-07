@@ -35,6 +35,26 @@ Control individual pixels on a Ulanzi TC001 (32x8 LED matrix) via MQTT (with TLS
 | `pixelwidget/status` | Online/offline status (birth/will) |
 | `pixelwidget/button` | Button press events: `left`, `middle`, `right` |
 
+### Image Request Topic
+
+| Topic | Payload | Trigger | Description |
+|-------|---------|---------|-------------|
+| `pixelwidget/image/request` | `1` | Automatic | Sent on MQTT connection (after 1s delay) and on middle button press to request the current display image from the backend |
+
+## Image Synchronization
+
+The device automatically requests the current display image in two scenarios:
+
+1. **On MQTT connection** - After successfully connecting to the broker, the device sends an image request after a 1-second delay to ensure stability
+2. **On middle button press** - When the middle button is pressed, it wakes the display and requests the current image
+
+Your backend service should:
+- Subscribe to `pixelwidget/image/request`
+- When received, fetch or generate the current display image as a 32x8 RGB image (see [Sending a Full Image](#sending-a-full-image) section)
+- Publish the base64-encoded image to `pixelwidget/pixel/image`
+
+This enables the display to stay synchronized with your application state across reboots and wake events.
+
 ## Examples
 
 ### Using mosquitto_pub (CLI)
