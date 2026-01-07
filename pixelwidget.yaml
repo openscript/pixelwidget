@@ -126,6 +126,13 @@ mqtt:
   will_message:
     topic: ${name}/status
     payload: offline
+  on_connect:
+    then:
+      - delay: 1s
+      - mqtt.publish:
+          topic: ${name}/image/request
+          payload: "1"
+      - lambda: ESP_LOGI("mqtt", "Connected - requesting image");
 
 i2c:
   sda: $sda_pin
@@ -385,6 +392,9 @@ binary_sensor:
         - mqtt.publish:
             topic: ${name}/button
             payload: "middle"
+        - mqtt.publish:
+            topic: ${name}/image/request
+            payload: "1"
 
   - platform: gpio
     pin:
