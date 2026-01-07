@@ -57,10 +57,12 @@ jobs:
         run: pip install yamllint
 
       - name: Lint pixelwidget.yaml
-        run: yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' pixelwidget.yaml
+        run: |
+          yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' pixelwidget.yaml
 
       - name: Lint secrets.yaml.template
-        run: yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' secrets.yaml.template
+        run: |
+          yamllint -d '{extends: relaxed, rules: {line-length: {max: 120}, indentation: {spaces: 2}}}' secrets.yaml.template
 
   security:
     name: Security Checks
