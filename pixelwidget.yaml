@@ -1,29 +1,45 @@
 substitutions:
-  device: esp_pixelwidget
+  device: pixelwidget
   name: pixelwidget
-  friendly_name: ESPHome Pixel Widget
-  project_name: "ajs.Pixel_Clock"
-  project_version: "1.1.5"
-  update_interval: 60s
-  comment: "Ulanzi Pixel Clock | EHMTXv2"
-  weekdays: "SUMOTUWETHFRSA"
-  date_to: ""
+  friendly_name: Pixel Widget
 
-dashboard_import:
-  package_import_url: github://andrewjswan/pixel-clock/pixel-clock.yaml@main
+  # Ulanzi TC001 pin definitions
+  battery_pin: GPIO34
+  ldr_pin: GPIO35
+  matrix_pin: GPIO32
+  buzzer_pin: GPIO15
+  left_button_pin: GPIO26
+  mid_button_pin: GPIO27
+  right_button_pin: GPIO14
+  scl_pin: GPIO22
+  sda_pin: GPIO21
 
-packages:
-  remote_package:
-    url: https://github.com/andrewjswan/pixel-clock
-    files:
-      - packages/common.yaml
-      - packages/framework-esp-idf.yaml
-      - packages/pixel_clock.yaml
-      - packages/pixel_clock_aab_light.yaml
-      # - packages/pixel_clock_aab_tiny.yaml
-      # - packages/pixel_clock_sun.yaml
-      # - packages/pixel_clock_timezone.yaml
-    refresh: 1s
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - lambda: id(buzzer_out).turn_off();
+      - light.turn_on:
+          id: matrix_light
+          brightness: 50%
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -78,3 +94,219 @@ mqtt:
   will_message:
     topic: ${name}/status
     payload: offline
+
+i2c:
+  sda: $sda_pin
+  scl: $scl_pin
+  scan: true
+
+# NeoPixel LED strip - 256 LEDs (32x8 matrix)
+light:
+  - platform: esp32_rmt_led_strip
+    id: matrix_light
+    rgb_order: GRB
+    pin: $matrix_pin
+    num_leds: 256
+    chipset: WS2812
+    name: "Matrix Light"
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+    on_turn_on:
+      - lambda: |-
+          auto call = id(matrix_light).turn_on();
+          call.set_brightness(128 / 255.0f);
+          call.perform();
+
+# Addressable light display for 2D pixel control
+display:
+  - platform: addressable_light
+    id: matrix_display
+    addressable_light_id: matrix_light
+    width: 32
+    height: 8
+    pixel_mapper: |-
+      if (y % 2 == 0) {
+        return (y * 32) + x;
+      }
+      return (y * 32) + (31 - x);
+    rotation: 0°
+    update_interval: 16ms
+    auto_clear_enabled: false
+    lambda: |-
+      // Display buffer is managed by MQTT commands
+      // This lambda could be used for animations if needed
+
+# MQTT command handlers for pixel control
+text_sensor:
+  # Set single pixel: "x,y,r,g,b"
+  - platform: mqtt_subscribe
+    name: "Pixel Set"
+    id: pixel_set_cmd
+    topic: ${name}/pixel/set
+    on_value:
+      then:
+        - lambda: |-
+            int px, py, r, g, b;
+            if (sscanf(x.c_str(), "%d,%d,%d,%d,%d", &px, &py, &r, &g, &b) == 5) {
+              if (px >= 0 && px < 32 && py >= 0 && py < 8) {
+                id(matrix_display).draw_pixel_at(px, py, Color(r, g, b));
+                ESP_LOGI("pixel", "Set (%d,%d) to RGB(%d,%d,%d)", px, py, r, g, b);
+              }
+            }
+
+  # Fill entire display: "r,g,b"
+  - platform: mqtt_subscribe
+    name: "Pixel Fill"
+    id: pixel_fill_cmd
+    topic: ${name}/pixel/fill
+    on_value:
+      then:
+        - lambda: |-
+            int r, g, b;
+            if (sscanf(x.c_str(), "%d,%d,%d", &r, &g, &b) == 3) {
+              id(matrix_display).fill(Color(r, g, b));
+              ESP_LOGI("pixel", "Fill RGB(%d,%d,%d)", r, g, b);
+            }
+
+  # Clear display (set all pixels to black)
+  - platform: mqtt_subscribe
+    name: "Pixel Clear"
+    id: pixel_clear_cmd
+    topic: ${name}/pixel/clear
+    on_value:
+      then:
+        - lambda: |-
+            id(matrix_display).fill(Color(0, 0, 0));
+            ESP_LOGI("pixel", "Clear display");
+
+  # Draw line: "x1,y1,x2,y2,r,g,b"
+  - platform: mqtt_subscribe
+    name: "Pixel Line"
+    id: pixel_line_cmd
+    topic: ${name}/pixel/line
+    on_value:
+      then:
+        - lambda: |-
+            int x1, y1, x2, y2, r, g, b;
+            if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &x1, &y1, &x2, &y2, &r, &g, &b) == 7) {
+              id(matrix_display).line(x1, y1, x2, y2, Color(r, g, b));
+              ESP_LOGI("pixel", "Line (%d,%d)-(%d,%d) RGB(%d,%d,%d)", x1, y1, x2, y2, r, g, b);
+            }
+
+  # Draw rectangle: "x,y,w,h,r,g,b"
+  - platform: mqtt_subscribe
+    name: "Pixel Rect"
+    id: pixel_rect_cmd
+    topic: ${name}/pixel/rect
+    on_value:
+      then:
+        - lambda: |-
+            int px, py, w, h, r, g, b;
+            if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &px, &py, &w, &h, &r, &g, &b) == 7) {
+              id(matrix_display).rectangle(px, py, w, h, Color(r, g, b));
+              ESP_LOGI("pixel", "Rect (%d,%d) %dx%d RGB(%d,%d,%d)", px, py, w, h, r, g, b);
+            }
+
+  # Draw filled rectangle: "x,y,w,h,r,g,b"
+  - platform: mqtt_subscribe
+    name: "Pixel Fill Rect"
+    id: pixel_fillrect_cmd
+    topic: ${name}/pixel/fillrect
+    on_value:
+      then:
+        - lambda: |-
+            int px, py, w, h, r, g, b;
+            if (sscanf(x.c_str(), "%d,%d,%d,%d,%d,%d,%d", &px, &py, &w, &h, &r, &g, &b) == 7) {
+              id(matrix_display).filled_rectangle(px, py, w, h, Color(r, g, b));
+              ESP_LOGI("pixel", "Filled rect (%d,%d) %dx%d RGB(%d,%d,%d)", px, py, w, h, r, g, b);
+            }
+
+  # Set brightness: "0-255"
+  - platform: mqtt_subscribe
+    name: "Brightness"
+    id: brightness_cmd
+    topic: ${name}/brightness
+    on_value:
+      then:
+        - lambda: |-
+            int brightness;
+            if (sscanf(x.c_str(), "%d", &brightness) == 1) {
+              float b = brightness / 255.0f;
+              auto call = id(matrix_light).turn_on();
+              call.set_brightness(b);
+              call.perform();
+              ESP_LOGI("pixel", "Brightness %d (%.2f)", brightness, b);
+            }
+
+# Buzzer output (active low, must be turned off on boot)
+output:
+  - platform: ledc
+    pin:
+      number: $buzzer_pin
+      ignore_strapping_warning: true
+    id: buzzer_out
+
+# Buttons for manual control
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: $left_button_pin
+      inverted: true
+    name: "Left Button"
+    on_press:
+      then:
+        - mqtt.publish:
+            topic: ${name}/button
+            payload: "left"
+
+  - platform: gpio
+    pin:
+      number: $mid_button_pin
+      inverted: true
+      mode: INPUT_PULLUP
+    name: "Middle Button"
+    on_press:
+      then:
+        - mqtt.publish:
+            topic: ${name}/button
+            payload: "middle"
+
+  - platform: gpio
+    pin:
+      number: $right_button_pin
+      inverted: true
+    name: "Right Button"
+    on_press:
+      then:
+        - mqtt.publish:
+            topic: ${name}/button
+            payload: "right"
+
+# Sensors
+sensor:
+  - platform: adc
+    pin: $battery_pin
+    name: "Battery"
+    update_interval: 60s
+    attenuation: auto
+    filters:
+      - multiply: 1.6
+      - lambda: |-
+          auto r = ((x - 3) / 0.69 * 100.00);
+          if (r >= 100) return 100;
+          if (r > 0) return r;
+          return 0;
+    unit_of_measurement: '%'
+    device_class: battery
+
+  - platform: adc
+    pin: $ldr_pin
+    name: "Illuminance"
+    update_interval: 10s
+    attenuation: auto
+    unit_of_measurement: lx
+    device_class: illuminance
+
+button:
+  - platform: restart
+    name: "Restart"

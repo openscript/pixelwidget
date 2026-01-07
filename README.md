@@ -1,21 +1,139 @@
-# ESPHome Pixel Clock aka TRAM
-[![esphome_badge](https://img.shields.io/badge/ESPHome-Config-blue.svg)](https://esphome.io/)
-[![pixel-clock_badge](https://img.shields.io/badge/Pixel-Clock-orange.svg)](https://github.com/andrewjswan/pixel-clock/)
-[![esp32_arduino](https://img.shields.io/badge/ESP32-Arduino-darkcyan.svg)](https://esphome.io/)
-[![Build](https://github.com/andrewjswan/pixel-clock/actions/workflows/build.yaml/badge.svg)](https://github.com/andrewjswan/pixel-clock/actions/workflows/build.yaml)
-[![GitHub](https://img.shields.io/github/license/andrewjswan/pixel-clock?color=blue)](https://github.com/andrewjswan/pixel-clock/blob/main/LICENSE)
-[![GitHub release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/andrewjswan/pixel-clock?include_prereleases)](https://github.com/andrewjswan/pixel-clock/releases)
-[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/downloads-pre/andrewjswan/pixel-clock/latest/total?label=release@downloads)](https://github.com/andrewjswan/pixel-clock/releases)
-[![StandWithUkraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
+# PixelWidget - MQTT Pixel Control for Ulanzi TC001
 
-## Description
-ESPHome firmware for Ulanzi TC001 Clock using [EspHoMaTriX](https://github.com/lubeda/EspHoMaTriXv2) component.
+Control individual pixels on a Ulanzi TC001 (32x8 LED matrix) via MQTT (with TLS).
 
-![Ulanzi TC001](./docs/img/ulanzi-tc001.png)
+## Hardware
 
-## Documentation
+- **Device**: Ulanzi TC001 (ESP32 + 32x8 WS2812 LED matrix)
+- **Matrix**: 256 LEDs in zigzag arrangement
+- **Coordinates**: X: 0-31 (left to right), Y: 0-7 (top to bottom)
 
-[Pixel Clock](https://andrewjswan.github.io/pixel-clock/)
+## Setup
 
-## Firmware
-You can install the firmware using [ESPHome](https://esphome.io/) using one of the ready-made configuration files or use [**PixelClock - ESP Web Tools**](https://andrewjswan.github.io/pixel-clock/firmware.html) - a convenient tool for installing and updating the firmware of ESP32 devices in the browser.
+1. Fill in your WiFi and MQTT credentials in `secrets.yaml`
+2. Flash with: `esphome run pixelwidget.yaml`
+
+## MQTT Topics
+
+### Control Commands
+
+| Topic | Payload Format | Description |
+|-------|----------------|-------------|
+| `pixelwidget/pixel/set` | `x,y,r,g,b` | Set single pixel color |
+| `pixelwidget/pixel/fill` | `r,g,b` | Fill entire display with color |
+| `pixelwidget/pixel/clear` | (any) | Clear display (all black) |
+| `pixelwidget/pixel/line` | `x1,y1,x2,y2,r,g,b` | Draw a line |
+| `pixelwidget/pixel/rect` | `x,y,w,h,r,g,b` | Draw rectangle outline |
+| `pixelwidget/pixel/fillrect` | `x,y,w,h,r,g,b` | Draw filled rectangle |
+| `pixelwidget/brightness` | `0-255` | Set display brightness |
+
+### Status Topics
+
+| Topic | Description |
+|-------|-------------|
+| `pixelwidget/status` | Online/offline status (birth/will) |
+| `pixelwidget/button` | Button press events: `left`, `middle`, `right` |
+
+## Examples
+
+### Using mosquitto_pub (CLI)
+
+```bash
+# Set pixel at (0,0) to red
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/pixel/set" -m "0,0,255,0,0"
+
+# Fill display with blue
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/pixel/fill" -m "0,0,255"
+
+# Clear display
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/pixel/clear" -m ""
+
+# Draw red line from (0,0) to (31,7)
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/pixel/line" -m "0,0,31,7,255,0,0"
+
+# Draw green rectangle at (5,2) with size 10x4
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/pixel/rect" -m "5,2,10,4,0,255,0"
+
+# Set brightness to 50%
+mosquitto_pub -h <broker> -p 8883 -u <user> -P <pass> --cafile ca.crt \
+  -t "pixelwidget/brightness" -m "128"
+```
+
+### Using Python (paho-mqtt)
+
+```python
+import ssl
+import paho.mqtt.client as mqtt
+
+# Connect to HiveMQ Cloud
+client = mqtt.Client()
+client.username_pw_set("display", "your_password")
+client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+client.connect("your-cluster.s1.eu.hivemq.cloud", 8883, 60)
+
+# Set pixel at (10, 3) to green
+client.publish("pixelwidget/pixel/set", "10,3,0,255,0")
+
+# Draw a red diagonal line
+client.publish("pixelwidget/pixel/line", "0,0,31,7,255,0,0")
+
+# Fill with purple
+client.publish("pixelwidget/pixel/fill", "128,0,128")
+
+client.disconnect()
+```
+
+### Using Node.js
+
+```javascript
+const mqtt = require('mqtt');
+
+const client = mqtt.connect('mqtts://your-cluster.s1.eu.hivemq.cloud:8883', {
+  username: 'display',
+  password: 'your_password'
+});
+
+client.on('connect', () => {
+  // Set multiple pixels for a pattern
+  for (let x = 0; x < 32; x++) {
+    const color = x % 2 === 0 ? '255,0,0' : '0,255,0';
+    client.publish('pixelwidget/pixel/set', `${x},0,${color}`);
+  }
+});
+```
+
+## Coordinate System
+
+```
+      X →
+    0 1 2 3 ... 31
+  ┌─────────────────┐
+0 │ ● ● ● ● ... ● │  Y
+1 │ ● ● ● ● ... ● │  ↓
+2 │ ● ● ● ● ... ● │
+3 │ ● ● ● ● ... ● │
+4 │ ● ● ● ● ... ● │
+5 │ ● ● ● ● ... ● │
+6 │ ● ● ● ● ... ● │
+7 │ ● ● ● ● ... ● │
+  └─────────────────┘
+```
+
+- Origin (0,0) is top-left
+- X increases to the right (0-31)
+- Y increases downward (0-7)
+- Colors are RGB values 0-255
+
+## Files
+
+- `pixelwidget.yaml` - Main ESPHome configuration with MQTT pixel control
+- `secrets.yaml` - WiFi and MQTT credentials (do not commit)
+
+## License
+
+MIT
