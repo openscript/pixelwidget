@@ -157,6 +157,7 @@ mqtt:
       - mqtt.publish:
           topic: ${name}/image/request
           payload: "1"
+      - script.execute: trigger_webhook
       - lambda: ESP_LOGI("mqtt", "Connected - requesting image");
 
 i2c:
