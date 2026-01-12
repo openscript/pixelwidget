@@ -109,6 +109,7 @@ for y in range(8):
 
 # Encode to base64
 image_b64 = base64.b64encode(rgb_data).decode('ascii')
+print(image_b64)
 
 # Send via MQTT
 client = mqtt.Client()

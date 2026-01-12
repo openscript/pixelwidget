@@ -60,6 +60,14 @@ script:
           call.perform();
           ESP_LOGI("display", "Display sleep after timeout");
 
+  - id: trigger_webhook
+    mode: single
+    then:
+      - lambda: |-
+          ESP_LOGI("http", "Triggering webhook to request image");
+      - http_request.get:
+          url: !secret image_request_webhook_url
+
 esp32:
   board: esp32dev
   framework:
@@ -67,6 +75,11 @@ esp32:
 
 logger:
   level: INFO
+
+http_request:
+  useragent: esphome/pixelwidget
+  timeout: 10s
+  verify_ssl: true
 
 api:
   encryption:
@@ -399,6 +412,7 @@ binary_sensor:
         - mqtt.publish:
             topic: ${name}/image/request
             payload: "1"
+        - script.execute: trigger_webhook
 
   - platform: gpio
     pin:
@@ -439,3 +453,8 @@ sensor:
 button:
   - platform: restart
     name: "Restart"
+
+  - platform: template
+    name: "Request Image"
+    on_press:
+      - script.execute: trigger_webhook
