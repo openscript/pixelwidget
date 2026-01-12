@@ -29,7 +29,7 @@ jobs:
           python-version: '3.11'
 
       - name: Cache .esphome directory
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .esphome
           key: ${{ runner.os }}-esphome-${{ hashFiles('pixelwidget.yaml') }}
