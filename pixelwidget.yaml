@@ -13,6 +13,8 @@ substitutions:
   right_button_pin: GPIO14
   scl_pin: GPIO22
   sda_pin: GPIO21
+  # Optional webhook URL (empty means disabled)
+  image_request_webhook_url: !secret image_request_webhook_url
 
 esphome:
   name: ${name}
@@ -70,7 +72,7 @@ script:
             - lambda: |-
                 ESP_LOGI("http", "Triggering webhook to request image");
             - http_request.get:
-                url: !secret image_request_webhook_url
+                url: !lambda 'return "${image_request_webhook_url}";'
           else:
             - lambda: |-
                 ESP_LOGW("http", "image_request_webhook_url not configured");
