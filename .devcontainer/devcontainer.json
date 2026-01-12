@@ -1,0 +1,12 @@
+{
+	"name": "pixelwidget",
+	"image": "mcr.microsoft.com/devcontainers/python:2-3.13-trixie",
+	"postCreateCommand": "pip3 install --user -r requirements.txt",
+	"postStartCommand": "sudo chmod a+rw /dev/ttyUSB0",
+	"runArgs": [
+		"--device=/dev/ttyUSB0:/dev/ttyUSB0",
+		"--group-add",
+		"dialout"
+	],
+	"remoteUser": "vscode"
+}
