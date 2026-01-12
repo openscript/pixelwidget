@@ -37,6 +37,18 @@ globals:
     type: float
     restore_value: yes
     initial_value: '0.33'
+  - id: first_led_r
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: first_led_g
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: first_led_b
+    type: int
+    restore_value: no
+    initial_value: '0'
 
 # Scripts for display management
 script:
@@ -77,6 +89,59 @@ script:
             - lambda: |-
                 ESP_LOGW("http", "image_request_webhook_url not configured");
 
+  - id: show_status_indicator
+    mode: restart
+    then:
+      # Read and backup LED 0 state directly from the light output
+      - lambda: |-
+          // Access the internal buffer through the AddressableLight interface
+          auto *addressable = static_cast<esphome::light::AddressableLight*>(
+            id(matrix_light).get_output()
+          );
+
+          if (addressable != nullptr) {
+            // Use the operator[] to get the color at position 0
+            auto color_view = (*addressable)[0];
+            id(first_led_r) = color_view.get_red();
+            id(first_led_g) = color_view.get_green();
+            id(first_led_b) = color_view.get_blue();
+            ESP_LOGI("status", "Backed up LED 0: R=%d G=%d B=%d",
+                     id(first_led_r), id(first_led_g), id(first_led_b));
+          }
+
+      # Show status color
+      - lambda: |-
+          Color status_color;
+
+          if (!id(wifi_component).is_connected()) {
+            status_color = Color(255, 0, 0);
+            ESP_LOGI("status", "Status: No WiFi (RED)");
+          } else if (!id(mqtt_client).is_connected()) {
+            status_color = Color(255, 128, 0);
+            ESP_LOGI("status", "Status: WiFi only (ORANGE)");
+          } else {
+            status_color = Color(0, 255, 0);
+            ESP_LOGI("status", "Status: Connected (GREEN)");
+          }
+
+          id(matrix_display).draw_pixel_at(0, 0, status_color);
+
+      # Wait 3 seconds
+      - delay: 3s
+
+      # Restore original LED state
+      - lambda: |-
+          Color backup = Color(id(first_led_r), id(first_led_g), id(first_led_b));
+          id(matrix_display).draw_pixel_at(0, 0, backup);
+          ESP_LOGI("status", "Restored LED 0: R=%d G=%d B=%d",
+                   id(first_led_r), id(first_led_g), id(first_led_b));
+
+# Add interval to trigger status indicator every 30 seconds
+interval:
+  - interval: 30s
+    then:
+      - script.execute: show_status_indicator
+
 esp32:
   board: esp32dev
   framework:
@@ -99,6 +164,7 @@ ota:
     password: !secret ota_password
 
 wifi:
+  id: wifi_component
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   ap:
@@ -108,6 +174,7 @@ wifi:
 captive_portal:
 
 mqtt:
+  id: mqtt_client
   broker: !secret mqtt_broker
   port: !secret mqtt_port
   username: !secret mqtt_username
