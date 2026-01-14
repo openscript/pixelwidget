@@ -14,7 +14,8 @@ substitutions:
   scl_pin: GPIO22
   sda_pin: GPIO21
   # Optional webhook URL (empty means disabled)
-  image_request_webhook_url: !secret image_request_webhook_url
+  send_image_webhook_url: !secret send_image_webhook_url
+  send_image_webhook_token: !secret send_image_webhook_token
 
 esphome:
   name: ${name}
@@ -79,15 +80,23 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return strlen("${image_request_webhook_url}") > 0;'
+            lambda: 'return strlen("${send_image_webhook_url}") > 0;'
           then:
             - lambda: |-
                 ESP_LOGI("http", "Triggering webhook to request image");
-            - http_request.get:
-                url: !lambda 'return "${image_request_webhook_url}";'
+            - http_request.post:
+                url: "${send_image_webhook_url}"
+                request_headers:
+                  Authorization: "Bearer ${send_image_webhook_token}"
+                  Content-Type: "application/json"
+                body: '{"name":"Functions"}'
+                on_response:
+                  then:
+                    - lambda: |-
+                        ESP_LOGI("http", "Image request completed with status code: %d", response->status_code);
           else:
             - lambda: |-
-                ESP_LOGW("http", "image_request_webhook_url not configured");
+                ESP_LOGW("http", "send_image_webhook_url not configured");
 
   - id: show_status_indicator
     mode: restart
