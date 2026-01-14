@@ -38,6 +38,10 @@ globals:
     type: float
     restore_value: yes
     initial_value: '0.33'
+  - id: display_is_awake
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: first_led_r
     type: int
     restore_value: no
@@ -61,18 +65,20 @@ script:
       - lambda: |-
           id(display_timeout_minutes) = timeout_minutes;
           ESP_LOGI("display", "Display wake, timeout in %d minutes, brightness %.0f%%", timeout_minutes, id(display_brightness) * 100);
-          // Get current light state and only change brightness
-          auto call = id(matrix_light).make_call();
-          call.set_state(true);
-          call.set_brightness(id(display_brightness));
-          call.perform();
+          // Only push brightness the first time after sleep to avoid visible flicker
+          if (!id(display_is_awake)) {
+            id(display_is_awake) = true;
+            auto call = id(matrix_light).make_call();
+            call.set_brightness(id(display_brightness));
+            call.perform();
+          }
       - delay: !lambda 'return id(display_timeout_minutes) * 60 * 1000;'
       - lambda: |-
           // Sleep by setting brightness to 0
           auto call = id(matrix_light).make_call();
-          call.set_state(true);
           call.set_brightness(0.0f);
           call.perform();
+          id(display_is_awake) = false;
           ESP_LOGI("display", "Display sleep after timeout");
 
   - id: trigger_webhook
@@ -250,7 +256,7 @@ light:
     num_leds: 256
     chipset: WS2812
     name: "Matrix Light"
-    restore_mode: ALWAYS_OFF
+    restore_mode: ALWAYS_ON
     default_transition_length: 0s
 
 # Addressable light display for 2D pixel control
